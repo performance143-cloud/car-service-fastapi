@@ -1,19 +1,30 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DECIMAL
+from sqlalchemy import Column, Integer, String, ForeignKey, DECIMAL, TIMESTAMP, Boolean
 from .database import Base
 
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(100), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+
+class Client(Base):
+    __tablename__ = "clients"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True)
     name = Column(String(100), nullable=False)
     phone = Column(String(20), nullable=False)
-    email = Column(String(100), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    role = Column(String(20), default="client")
+
+class Employee(Base):
+    __tablename__ = "employees"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    name = Column(String(100), nullable=False)
+    role = Column(String(20), nullable=False)  # mechanic, admin
 
 class Car(Base):
     __tablename__ = "cars"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"))
     brand_model = Column(String(100), nullable=False)
     license_plate = Column(String(20), nullable=False)
 
@@ -23,3 +34,27 @@ class Service(Base):
     title = Column(String(150), nullable=False)
     price = Column(DECIMAL(10, 2), nullable=False)
     duration_minutes = Column(Integer, nullable=False)
+
+class Schedule(Base):
+    __tablename__ = "schedule"
+    id = Column(Integer, primary_key=True, index=True)
+    date_time = Column(TIMESTAMP, nullable=False)
+    box_number = Column(Integer, nullable=False)
+    is_free = Column(Boolean, default=True)
+
+class Appointment(Base):
+    __tablename__ = "appointments"
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"))
+    car_id = Column(Integer, ForeignKey("cars.id", ondelete="CASCADE"))
+    service_id = Column(Integer, ForeignKey("services.id", ondelete="RESTRICT"))
+    mechanic_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"))
+    schedule_id = Column(Integer, ForeignKey("schedule.id", ondelete="RESTRICT"))
+    status = Column(String(20), default="создана")
+
+class Queue(Base):
+    __tablename__ = "queue"
+    id = Column(Integer, primary_key=True, index=True)
+    appointment_id = Column(Integer, ForeignKey("appointments.id", ondelete="CASCADE"), unique=True)
+    ticket_number = Column(Integer, nullable=False)
+    call_status = Column(String(20), default="ожидает")  # ожидает, вызван, пропущен

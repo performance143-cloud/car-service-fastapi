@@ -1,12 +1,14 @@
 from fastapi import FastAPI
+from app.database import engine, Base
+import app.models as models
 
-# Создаем приложение FastAPI
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI(title="АвтоБосс API", description="Бэкенд для автосервиса")
 
-# Стартовый маршрут (главная страница сервера)
 @app.get("/")
 def home():
     return {
         "status": "рабочий",
-        "message": "Добро пожаловать в систему автоматизации автосервиса АвтоБосс!"
+        "message": "Система АвтоБосс успешно подключена к PostgreSQL и готова к работе!"
     }

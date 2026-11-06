@@ -3,5 +3,9 @@
   <component name="Black">
     <option name="sdkName" value="C:\Anaconda3" />
   </component>
+<<<<<<< HEAD
   <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.13 (car-service-fastapi-main)" project-jdk-type="Python SDK" />
+=======
+  <component name="ProjectRootManager" version="2" project-jdk-name="C:\Anaconda3" project-jdk-type="Python SDK" />
+>>>>>>> 1b9e6f3b8de39cb03a7c9b269507a6a708956dda
 </project>

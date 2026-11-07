@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.3.5",
     "axios": "^1.21.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -20,6 +21,7 @@
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/react-router-dom": "^5.3.3",
     "@vitejs/plugin-react": "^6.1.2",
     "autoprefixer": "^10.6.2",
     "eslint": "^10.14.0",

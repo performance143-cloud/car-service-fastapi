@@ -1,6 +1,6 @@
 // frontend/src/pages/ClientDashboard.tsx
 import React, { useState, useEffect } from 'react';
-import API from '../api';
+import API from '../../api';
 
 interface Car {
   id: number;
@@ -86,11 +86,17 @@ export const ClientDashboard: React.FC = () => {
     }
 
     try {
+      // Преобразуем формат из YYYY-MM-DDTHH:MM в YYYY-MM-DDTHH:MM:SS для FastAPI
+      // Замена на прямую отправку строки без использования new Date() исключает сдвиг часовых поясов (UTC)
+      const formattedDate = appointmentDate.includes(':') && appointmentDate.split(':').length === 2 
+        ? `${appointmentDate}:00` 
+        : appointmentDate;
+
       const response = await API.post('/appointments', {
         car_id: Number(selectedCarId),
         service_id: Number(selectedServiceId),
         mechanic_id: Number(mechanicId),
-        date_time: new Date(appointmentDate).toISOString().split('.')[0], // Формат YYYY-MM-DDTHH:MM:SS
+        date_time: formattedDate, 
         box_number: Number(boxNumber)
       });
       
@@ -198,10 +204,28 @@ export const ClientDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* БЛОК 3: Добавление машины в гараж */}
+                    {/* БЛОК 3: Добавление машины в гараж */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 h-fit">
             <h2 className="text-xl font-bold text-slate-700 mb-4">➕ Добавить машину</h2>
             <form onSubmit={handleAddCar} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase">Марка и модель</label>
                 <input type="text" required placeholder="Например: Toyota Camry" value={newBrand} onChange={e => setNewBrand(e.target.value)}
+                  className="mt-1 block w-full p-3 bg-slate-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"/>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase">Гос. номер</label>
+                <input type="text" required placeholder="Например: А123АА777" value={newPlate} onChange={e => setNewPlate(e.target.value)}
+                  className="mt-1 block w-full p-3 bg-slate-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"/>
+              </div>
+              <button type="submit" className="w-full bg-slate-800 text-white p-3 rounded-lg font-bold hover:bg-slate-700 transition">
+                Вкатить в гараж
+              </button>
+            </form>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};

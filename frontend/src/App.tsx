@@ -8,7 +8,6 @@ import { QueueMonitor } from './pages/QueueMonitor';
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
-  // Проверяем наличие токена в браузере при первой загрузке приложения
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
@@ -27,10 +26,10 @@ function App() {
 
   return (
     <Router>
-      <div className="min-h-screen bg-slate-50 font-sans">
-        {/* Навигационная панель / Меню */}
+      <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
+        {/* Шапка приложения */}
         <nav className="bg-slate-800 text-white shadow-md">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto px-4">
             <div className="flex items-center justify-between h-16">
               <div className="flex items-center space-x-8">
                 <span className="text-xl font-black tracking-wider text-blue-400">🚗 АВТОБОСС</span>
@@ -47,9 +46,9 @@ function App() {
               </div>
               <div className="flex items-center">
                 {!isAuthenticated ? (
-                  <span className="text-sm text-slate-400">Требуется авторизация</span>
+                  <span className="text-sm text-slate-400">Авторизация</span>
                 ) : (
-                  <button onClick={handleLogout} className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2 px-4 rounded-lg transition shadow-md">
+                  <button onClick={handleLogout} className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2 px-4 rounded-lg transition">
                     Выйти
                   </button>
                 )}
@@ -58,25 +57,18 @@ function App() {
           </div>
         </nav>
 
-        {/* Маршруты страниц приложения */}
+        {/* Контент страниц */}
         <main className="py-4">
           <Routes>
-            {/* Страница авторизации */}
             <Route 
               path="/auth" 
               element={!isAuthenticated ? <Auth onLoginSuccess={handleLoginSuccess} /> : <Navigate to="/dashboard" />} 
             />
-
-            {/* Личный кабинет клиента (защищенный роут) */}
             <Route 
               path="/dashboard" 
               element={isAuthenticated ? <ClientDashboard /> : <Navigate to="/auth" />} 
             />
-
-            {/* Монитор электронной очереди и панель мастера (доступен всегда для экрана в сервисе) */}
             <Route path="/queue-monitor" element={<QueueMonitor />} />
-
-            {/* Редирект по умолчанию */}
             <Route 
               path="*" 
               element={<Navigate to={isAuthenticated ? "/dashboard" : "/auth"} />} 

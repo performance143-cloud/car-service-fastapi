@@ -3,6 +3,7 @@ from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
 from app.models import RoleEnum, AppointmentStatus
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
 class ClientRegister(BaseModel):
     email: EmailStr
@@ -26,22 +27,19 @@ class CarResponse(BaseModel):
     id: int
     brand_model: str
     license_plate: str
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ServiceResponse(BaseModel):
     id: int
     title: str
     price: Decimal
     duration_minutes: int
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class MechanicResponse(BaseModel):
     id: int
     name: str
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AppointmentCreate(BaseModel):
     car_id: int
@@ -57,8 +55,7 @@ class AppointmentResponse(BaseModel):
     date_time: datetime
     ticket_number: Optional[int]
     status: AppointmentStatus
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 class ServiceCreate(BaseModel):
     title: str
     price: Decimal

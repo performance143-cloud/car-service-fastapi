@@ -30,6 +30,14 @@
 
 Откройте документацию (Swagger): 👉 http://127.0.0.1:8000/docs
 
+
+🔐 Тестовые аккаунты
+Администратор: admin@autoboss.ru / admin123
+
+Мастер: master1@autoboss.ru / master123
+
+Клиент: регистрируется самостоятельно через /auth/register
+
 📝 Основные эндпоинты
 POST /auth/register — Регистрация клиента
 
@@ -37,24 +45,34 @@ POST /auth/login — Вход (JWT)
 
 GET /cars — Мои автомобили (защищено)
 
+POST /cars — Добавить авто (защищено)
+
 GET /services — Прайс-лист
 
-GET /services/{id}/available-mechanics — Поиск свободных мастеров на время
+POST /admin/services — Создать услугу (только админ)
+
+GET /services/{id}/available-mechanics — Поиск свободных мастеров
 
 POST /appointments — Создание записи (защищено)
 
+PATCH /appointments/{id}/cancel — Отмена записи клиентом
+
 GET /mechanics/me/schedule — График мастера на любой день
 
-GET /mechanics/me/stats — Статистика мастера (сколько машин сделано)
+GET /mechanics/me/stats — Статистика мастера
+
+PATCH /appointments/{id}/status — Изменение статуса (мастер)
 
 🏗️ Архитектура
-app/models.py — Модели БД (SQLAlchemy, Enum для ролей и статусов)
+app/models.py — Модели БД (Enum для ролей, связи)
 
-app/schemas.py — Валидация данных (Pydantic)
+app/schemas.py — Валидация данных (Pydantic V2)
 
-app/auth.py — JWT-авторизация и хеширование паролей
+app/auth.py — JWT и хеширование
 
 app/main.py — Роутеры и бизнес-логика
 
-app/seed.py — Автозаполнение базы при старте
+app/seed.py — Автозаполнение БД
+
+
 

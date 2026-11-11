@@ -60,3 +60,8 @@ class ServiceCreate(BaseModel):
     title: str
     price: Decimal
     duration_minutes: int
+
+class MechanicCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=6)
+    name: str = Field(..., min_length=2)

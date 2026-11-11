@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timedelta
@@ -10,9 +10,10 @@ from app.database import engine, Base, get_db
 from app import models, schemas, auth
 from app.config import settings
 
-Base.metadata.create_all(bind=engine)
+
 
 from app.seed import seed_db
+
 seed_db()
 
 app = FastAPI(
@@ -20,9 +21,8 @@ app = FastAPI(
     description="Бэкенд автосервиса с распределением по мастерам",
     version="2.0.0"
 )
-# ... дальше идет добавление CORS и остальной код ...
 
-# Безопасный CORS (не "*" вместе с credentials)
+# Безопасный CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:5173", "http://localhost:8000"],
@@ -31,16 +31,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+security = HTTPBearer()
 
 
 # --- ЗАВИСИМОСТИ (ПРОВЕРКА ТОКЕНА) ---
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)) -> models.User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Не удалось проверить учетные данные",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    token = credentials.credentials
     payload = auth.decode_access_token(token)
     user_id = payload.get("sub")
     if not user_id:
@@ -59,10 +60,13 @@ def get_current_mechanic(current_user: models.User = Depends(get_current_user),
     if not mechanic:
         raise HTTPException(status_code=404, detail="Профиль мастера не найден")
     return mechanic
+
+
 def get_current_admin(current_user: models.User = Depends(get_current_user)):
     if current_user.role != models.RoleEnum.admin:
         raise HTTPException(status_code=403, detail="Требуются права администратора")
     return current_user
+
 
 # --- 1. АУТЕНТИФИКАЦИЯ ---
 @app.post("/auth/register", status_code=status.HTTP_201_CREATED)
@@ -95,20 +99,21 @@ def login(login_data: schemas.UserLogin, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-# --- 2. АВТОМОБИЛИ (ТОЛЬКО ДЛЯ СВОЕГО ПРОФИЛЯ!) ---
+# --- 2. АВТОМОБИЛИ ---
 @app.post("/cars", response_model=schemas.CarResponse)
 def add_car(car_data: schemas.CarCreate, current_user: models.User = Depends(get_current_user),
             db: Session = Depends(get_db)):
     client = db.query(models.Client).filter(models.Client.user_id == current_user.id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Профиль клиента не найден")
-    # Проверка на дубликат номера
+
     existing_car = db.query(models.Car).filter(
         models.Car.client_id == client.id,
         models.Car.license_plate == car_data.license_plate
     ).first()
     if existing_car:
         raise HTTPException(status_code=400, detail="Машина с таким госномером уже добавлена")
+
     new_car = models.Car(client_id=client.id, brand_model=car_data.brand_model, license_plate=car_data.license_plate)
     db.add(new_car)
     db.commit()
@@ -128,8 +133,11 @@ def get_my_cars(current_user: models.User = Depends(get_current_user), db: Sessi
 @app.get("/services", response_model=List[schemas.ServiceResponse])
 def get_services(db: Session = Depends(get_db)):
     return db.query(models.Service).all()
+
+
 @app.post("/admin/services", response_model=schemas.ServiceResponse, status_code=status.HTTP_201_CREATED)
-def create_service(service_data: schemas.ServiceCreate, admin: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+def create_service(service_data: schemas.ServiceCreate, admin: models.User = Depends(get_current_admin),
+                   db: Session = Depends(get_db)):
     new_service = models.Service(
         title=service_data.title,
         price=service_data.price,
@@ -140,10 +148,10 @@ def create_service(service_data: schemas.ServiceCreate, admin: models.User = Dep
     db.refresh(new_service)
     return new_service
 
+
 # --- 4. ВЫБОР МАСТЕРА И ЗАПИСЬ ---
 @app.get("/services/{service_id}/available-mechanics", response_model=List[schemas.MechanicResponse])
 def get_available_mechanics(service_id: int, date_time: datetime, db: Session = Depends(get_db)):
-    """Возвращает мастеров, у которых нет пересечений по времени на эту услугу"""
     service = db.query(models.Service).filter(models.Service.id == service_id).first()
     if not service:
         raise HTTPException(status_code=404, detail="Услуга не найдена")
@@ -153,7 +161,6 @@ def get_available_mechanics(service_id: int, date_time: datetime, db: Session = 
     available = []
 
     for mech in all_mechanics:
-        # Проверка занятости: пересекается ли с другими записями
         overlap = db.query(models.Appointment).filter(
             models.Appointment.mechanic_id == mech.id,
             models.Appointment.date_time < new_end,
@@ -171,7 +178,6 @@ def create_appointment(app_data: schemas.AppointmentCreate, current_user: models
     if not service:
         raise HTTPException(status_code=404, detail="Услуга не найдена")
 
-    # Проверка занятости мастера
     new_end = app_data.date_time + timedelta(minutes=service.duration_minutes)
     existing = db.query(models.Appointment).filter(
         models.Appointment.mechanic_id == app_data.mechanic_id,
@@ -182,7 +188,6 @@ def create_appointment(app_data: schemas.AppointmentCreate, current_user: models
     if existing:
         raise HTTPException(status_code=400, detail="Мастер занят в это время")
 
-    # Генерация талона
     target_date = app_data.date_time.date()
     daily_count = db.query(func.count(models.Appointment.id)).filter(
         func.date(models.Appointment.date_time) == target_date
@@ -220,11 +225,11 @@ def cancel_appointment(appointment_id: int, current_user: models.User = Depends(
     db.commit()
     return {"status": "успех", "message": "Запись отменена"}
 
+
 # --- 5. ГРАФИК И СТАТИСТИКА (ДЛЯ МАСТЕРА) ---
 @app.get("/mechanics/me/schedule", response_model=List[schemas.AppointmentResponse])
 def get_mechanic_schedule(date: str, mechanic: models.Employee = Depends(get_current_mechanic),
                           db: Session = Depends(get_db)):
-    """Расписание мастера на конкретную дату (формат YYYY-MM-DD)"""
     try:
         target_date = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
@@ -238,7 +243,6 @@ def get_mechanic_schedule(date: str, mechanic: models.Employee = Depends(get_cur
 
 @app.get("/mechanics/me/stats")
 def get_mechanic_stats(mechanic: models.Employee = Depends(get_current_mechanic), db: Session = Depends(get_db)):
-    """Статистика: сколько машин сделано"""
     completed = db.query(func.count(models.Appointment.id)).filter(
         models.Appointment.mechanic_id == mechanic.id,
         models.Appointment.status == models.AppointmentStatus.done
@@ -246,7 +250,6 @@ def get_mechanic_stats(mechanic: models.Employee = Depends(get_current_mechanic)
     return {"mechanic": mechanic.name, "completed_cars": completed}
 
 
-# --- 6. СТАТУС (ДЛЯ МАСТЕРА) ---
 @app.patch("/appointments/{appointment_id}/status")
 def update_status(appointment_id: int, new_status: models.AppointmentStatus,
                   mechanic: models.Employee = Depends(get_current_mechanic), db: Session = Depends(get_db)):
@@ -257,6 +260,28 @@ def update_status(appointment_id: int, new_status: models.AppointmentStatus,
     app.status = new_status
     db.commit()
     return {"status": "успех", "new_status": new_status}
+
+
+# --- 7. АДМИНКА ---
+@app.post("/admin/create-mechanic", status_code=status.HTTP_201_CREATED)
+def create_mechanic(mechanic_data: schemas.MechanicCreate, admin: models.User = Depends(get_current_admin),
+                    db: Session = Depends(get_db)):
+    if db.query(models.User).filter(models.User.email == mechanic_data.email).first():
+        raise HTTPException(status_code=400, detail="Email уже занят")
+
+    new_user = models.User(
+        email=mechanic_data.email,
+        password_hash=auth.get_password_hash(mechanic_data.password),
+        role=models.RoleEnum.mechanic
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    new_employee = models.Employee(user_id=new_user.id, name=mechanic_data.name)
+    db.add(new_employee)
+    db.commit()
+    return {"status": "успех", "message": f"Мастер {mechanic_data.name} успешно создан"}
 
 
 @app.get("/")

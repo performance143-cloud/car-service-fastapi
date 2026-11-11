@@ -63,6 +63,9 @@ GET /mechanics/me/stats — Статистика мастера
 
 PATCH /appointments/{id}/status — Изменение статуса (мастер)
 
+*   `POST /admin/create-mechanic` — Создать мастера (только админ)
+*   `PATCH /appointments/{id}/cancel` — Отмена записи клиентом
+
 🏗️ Архитектура
 app/models.py — Модели БД (Enum для ролей, связи)
 

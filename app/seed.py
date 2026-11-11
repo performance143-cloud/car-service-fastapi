@@ -4,6 +4,16 @@ from app import models, auth
 def seed_db():
     db = SessionLocal()
     try:
+        # 0. Создаем Админа
+        if not db.query(models.User).filter(models.User.role == models.RoleEnum.admin).first():
+            admin_user = models.User(
+                email="admin@autoboss.ru",
+                password_hash=auth.get_password_hash("admin123"),
+                role=models.RoleEnum.admin
+            )
+            db.add(admin_user)
+            db.commit()
+
         # Если услуги уже есть, ничего не делаем (защита от дублей)
         if db.query(models.Service).first():
             return
@@ -34,6 +44,6 @@ def seed_db():
             db.add(employee)
             db.commit()
 
-        print("УСПЕХ: База данных заполнена услугами и 6 мастерами!")
+        print("УСПЕХ: База данных заполнена Админом, услугами и 6 мастерами!")
     finally:
         db.close()

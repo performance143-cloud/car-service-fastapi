@@ -11,6 +11,7 @@ from app import models, schemas, auth
 from app.config import settings
 
 Base.metadata.create_all(bind=engine)
+
 from app.seed import seed_db
 seed_db()
 
@@ -19,6 +20,7 @@ app = FastAPI(
     description="Бэкенд автосервиса с распределением по мастерам",
     version="2.0.0"
 )
+# ... дальше идет добавление CORS и остальной код ...
 
 # Безопасный CORS (не "*" вместе с credentials)
 app.add_middleware(

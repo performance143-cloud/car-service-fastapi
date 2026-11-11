@@ -1,16 +1,6 @@
 from app.database import SessionLocal
 from app import models, auth
 
-# 0. Создаем Админа
-if not db.query(models.User).filter(models.User.role == models.RoleEnum.admin).first():
-    admin_user = models.User(
-        email="admin@autoboss.ru",
-        password_hash=auth.get_password_hash("admin123"),
-        role=models.RoleEnum.admin
-    )
-    db.add(admin_user)
-    db.commit()
-
 def seed_db():
     db = SessionLocal()
     try:
@@ -24,8 +14,6 @@ def seed_db():
             models.Service(title="Шиномонтаж", price=3000.00, duration_minutes=60),
             models.Service(title="Диагностика подвески", price=1000.00, duration_minutes=30),
             models.Service(title="Замена тормозных колодок", price=2500.00, duration_minutes=90),
-            models.Service(title="Развал-схождение", price=2000.00, duration_minutes=50),
-            models.Service(title="Замена свечей зажигания", price=1200.00, duration_minutes=30),
         ]
         db.add_all(services)
         db.commit()

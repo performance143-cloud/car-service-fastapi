@@ -59,3 +59,7 @@ class AppointmentResponse(BaseModel):
     status: AppointmentStatus
     class Config:
         from_attributes = True
+class ServiceCreate(BaseModel):
+    title: str
+    price: Decimal
+    duration_minutes: int

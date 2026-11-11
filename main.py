@@ -57,7 +57,10 @@ def get_current_mechanic(current_user: models.User = Depends(get_current_user),
     if not mechanic:
         raise HTTPException(status_code=404, detail="Профиль мастера не найден")
     return mechanic
-
+def get_current_admin(current_user: models.User = Depends(get_current_user)):
+    if current_user.role != models.RoleEnum.admin:
+        raise HTTPException(status_code=403, detail="Требуются права администратора")
+    return current_user
 
 # --- 1. АУТЕНТИФИКАЦИЯ ---
 @app.post("/auth/register", status_code=status.HTTP_201_CREATED)
@@ -117,7 +120,17 @@ def get_my_cars(current_user: models.User = Depends(get_current_user), db: Sessi
 @app.get("/services", response_model=List[schemas.ServiceResponse])
 def get_services(db: Session = Depends(get_db)):
     return db.query(models.Service).all()
-
+@app.post("/admin/services", response_model=schemas.ServiceResponse, status_code=status.HTTP_201_CREATED)
+def create_service(service_data: schemas.ServiceCreate, admin: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    new_service = models.Service(
+        title=service_data.title,
+        price=service_data.price,
+        duration_minutes=service_data.duration_minutes
+    )
+    db.add(new_service)
+    db.commit()
+    db.refresh(new_service)
+    return new_service
 
 # --- 4. ВЫБОР МАСТЕРА И ЗАПИСЬ ---
 @app.get("/services/{service_id}/available-mechanics", response_model=List[schemas.MechanicResponse])

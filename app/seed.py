@@ -1,6 +1,16 @@
 from app.database import SessionLocal
 from app import models, auth
 
+# 0. Создаем Админа
+if not db.query(models.User).filter(models.User.role == models.RoleEnum.admin).first():
+    admin_user = models.User(
+        email="admin@autoboss.ru",
+        password_hash=auth.get_password_hash("admin123"),
+        role=models.RoleEnum.admin
+    )
+    db.add(admin_user)
+    db.commit()
+
 def seed_db():
     db = SessionLocal()
     try:

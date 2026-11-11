@@ -11,6 +11,8 @@ from app import models, schemas, auth
 from app.config import settings
 
 Base.metadata.create_all(bind=engine)
+from app.seed import seed_db
+seed_db()
 
 app = FastAPI(
     title="АвтоБосс API",

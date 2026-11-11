@@ -100,7 +100,13 @@ def add_car(car_data: schemas.CarCreate, current_user: models.User = Depends(get
     client = db.query(models.Client).filter(models.Client.user_id == current_user.id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Профиль клиента не найден")
-
+    # Проверка на дубликат номера
+    existing_car = db.query(models.Car).filter(
+        models.Car.client_id == client.id,
+        models.Car.license_plate == car_data.license_plate
+    ).first()
+    if existing_car:
+        raise HTTPException(status_code=400, detail="Машина с таким госномером уже добавлена")
     new_car = models.Car(client_id=client.id, brand_model=car_data.brand_model, license_plate=car_data.license_plate)
     db.add(new_car)
     db.commit()

@@ -1,61 +1,53 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
+from app.models import RoleEnum, AppointmentStatus
 
-
-# --- АУТЕНТИФИКАЦИЯ ---
 class ClientRegister(BaseModel):
     email: EmailStr
-    password: str = Field(..., min_length=6, description="Пароль не менее 6 символов")
+    password: str = Field(..., min_length=6)
     name: str = Field(..., min_length=2)
-    phone: str
-
+    phone: str = Field(..., pattern=r"^\+?[0-9]{10,15}$")
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-
 class Token(BaseModel):
     access_token: str
     token_type: str
 
-
-# --- АВТОМОБИЛИ ---
 class CarCreate(BaseModel):
-    brand_model: str = Field(..., example="Toyota Camry")
-    license_plate: str = Field(..., example="А123АА777")
-
+    brand_model: str
+    license_plate: str
 
 class CarResponse(BaseModel):
     id: int
     brand_model: str
     license_plate: str
-
     class Config:
         from_attributes = True
 
-
-# --- УСЛУГИ (ПРАЙС-ЛИСТ) ---
 class ServiceResponse(BaseModel):
     id: int
     title: str
     price: Decimal
     duration_minutes: int
-
     class Config:
         from_attributes = True
 
+class MechanicResponse(BaseModel):
+    id: int
+    name: str
+    class Config:
+        from_attributes = True
 
-# --- ЗАПИСИ НА РЕМОНТ И ОЧЕРЕДЬ ---
 class AppointmentCreate(BaseModel):
     car_id: int
     service_id: int
     mechanic_id: int
-    date_time: datetime  # Формат: YYYY-MM-DDTHH:MM:SS
-    box_number: int = Field(..., ge=1, le=5, description="Номер бокса от 1 до 5")
-
+    date_time: datetime
 
 class AppointmentResponse(BaseModel):
     id: int
@@ -63,9 +55,7 @@ class AppointmentResponse(BaseModel):
     service_id: int
     mechanic_id: int
     date_time: datetime
-    box_number: int
-    ticket_number: int  # Тот самый номер в электронной очереди!
-    status: str
-
+    ticket_number: Optional[int]
+    status: AppointmentStatus
     class Config:
         from_attributes = True

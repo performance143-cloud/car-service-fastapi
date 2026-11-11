@@ -209,7 +209,6 @@ def cancel_appointment(appointment_id: int, current_user: models.User = Depends(
     if not appointment:
         raise HTTPException(status_code=404, detail="Запись не найдена")
 
-    # Проверяем, что запись принадлежит машине этого клиента
     car = db.query(models.Car).filter(models.Car.id == appointment.car_id).first()
     if not car or car.client_id != client.id:
         raise HTTPException(status_code=403, detail="Вы не можете отменить чужую запись")

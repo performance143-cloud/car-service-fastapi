@@ -190,6 +190,29 @@ def create_appointment(app_data: schemas.AppointmentCreate, current_user: models
     return new_app
 
 
+@app.patch("/appointments/{appointment_id}/cancel")
+def cancel_appointment(appointment_id: int, current_user: models.User = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    client = db.query(models.Client).filter(models.Client.user_id == current_user.id).first()
+    if not client:
+        raise HTTPException(status_code=403, detail="Только клиенты могут отменять записи")
+
+    appointment = db.query(models.Appointment).filter(models.Appointment.id == appointment_id).first()
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+
+    # Проверяем, что запись принадлежит машине этого клиента
+    car = db.query(models.Car).filter(models.Car.id == appointment.car_id).first()
+    if not car or car.client_id != client.id:
+        raise HTTPException(status_code=403, detail="Вы не можете отменить чужую запись")
+
+    if appointment.status == models.AppointmentStatus.done:
+        raise HTTPException(status_code=400, detail="Нельзя отменить уже выполненный ремонт")
+
+    appointment.status = models.AppointmentStatus.cancelled
+    db.commit()
+    return {"status": "успех", "message": "Запись отменена"}
+
 # --- 5. ГРАФИК И СТАТИСТИКА (ДЛЯ МАСТЕРА) ---
 @app.get("/mechanics/me/schedule", response_model=List[schemas.AppointmentResponse])
 def get_mechanic_schedule(date: str, mechanic: models.Employee = Depends(get_current_mechanic),

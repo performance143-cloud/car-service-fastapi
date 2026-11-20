@@ -50,9 +50,9 @@ export function ClientDashboard() {
         const res = await API.get(`/services/${serviceId}/available-mechanics`, {
           params: { date_time: formattedDate },
         });
-        setMechanics(res.data);
+                setMechanics(res.data);
         if (res.data.length > 0) {
-          setMechanicId(String(res.data[0].id));
+          setMechanicId(String(res.data.at(0).id));
         } else {
           setMechanicId('');
         }

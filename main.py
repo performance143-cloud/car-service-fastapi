@@ -23,7 +23,12 @@ app = FastAPI(
 # Безопасный CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:5173", "http://localhost:8000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://localhost:8000"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,7 +38,10 @@ security = HTTPBearer()
 
 
 # --- ЗАВИСИМОСТИ (ПРОВЕРКА ТОКЕНА) ---
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)) -> models.User:
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> models.User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Не удалось проверить учетные данные",
@@ -50,8 +58,10 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     return user
 
 
-def get_current_mechanic(current_user: models.User = Depends(get_current_user),
-                         db: Session = Depends(get_db)) -> models.Employee:
+def get_current_mechanic(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> models.Employee:
     if current_user.role != models.RoleEnum.mechanic:
         raise HTTPException(status_code=403, detail="Требуется роль мастера")
     mechanic = db.query(models.Employee).filter(models.Employee.user_id == current_user.id).first()
@@ -64,6 +74,12 @@ def get_current_admin(current_user: models.User = Depends(get_current_user)):
     if current_user.role != models.RoleEnum.admin:
         raise HTTPException(status_code=403, detail="Требуются права администратора")
     return current_user
+
+
+# --- 0. ПРОВЕРКА РАБОТЫ СЕРВЕРА ---
+@app.get("/")
+def root():
+    return {"message": "АвтоБосс API работает! Документация: /docs"}
 
 
 # --- 1. АУТЕНТИФИКАЦИЯ ---
@@ -93,14 +109,17 @@ def login(login_data: schemas.UserLogin, db: Session = Depends(get_db)):
     if not user or not auth.verify_password(login_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
 
-    access_token = auth.create_access_token(data={"sub": str(user.id)})
+    access_token = auth.create_access_token(data={"sub": str(user.id), "role": user.role.value})
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 # --- 2. АВТОМОБИЛИ ---
 @app.post("/cars", response_model=schemas.CarResponse)
-def add_car(car_data: schemas.CarCreate, current_user: models.User = Depends(get_current_user),
-            db: Session = Depends(get_db)):
+def add_car(
+    car_data: schemas.CarCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     client = db.query(models.Client).filter(models.Client.user_id == current_user.id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Профиль клиента не найден")
@@ -134,8 +153,11 @@ def get_services(db: Session = Depends(get_db)):
 
 
 @app.post("/admin/services", response_model=schemas.ServiceResponse, status_code=status.HTTP_201_CREATED)
-def create_service(service_data: schemas.ServiceCreate, admin: models.User = Depends(get_current_admin),
-                   db: Session = Depends(get_db)):
+def create_service(
+    service_data: schemas.ServiceCreate,
+    admin: models.User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
     new_service = models.Service(
         title=service_data.title,
         price=service_data.price,
@@ -161,6 +183,7 @@ def get_available_mechanics(service_id: int, date_time: datetime, db: Session = 
     for mech in all_mechanics:
         overlap = db.query(models.Appointment).filter(
             models.Appointment.mechanic_id == mech.id,
+            models.Appointment.status != models.AppointmentStatus.cancelled,
             models.Appointment.date_time < new_end,
             models.Appointment.date_time + timedelta(minutes=60) > date_time
         ).first()
@@ -170,8 +193,11 @@ def get_available_mechanics(service_id: int, date_time: datetime, db: Session = 
 
 
 @app.post("/appointments", response_model=schemas.AppointmentResponse)
-def create_appointment(app_data: schemas.AppointmentCreate, current_user: models.User = Depends(get_current_user),
-                       db: Session = Depends(get_db)):
+def create_appointment(
+    app_data: schemas.AppointmentCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     service = db.query(models.Service).filter(models.Service.id == app_data.service_id).first()
     if not service:
         raise HTTPException(status_code=404, detail="Услуга не найдена")
@@ -179,6 +205,7 @@ def create_appointment(app_data: schemas.AppointmentCreate, current_user: models
     new_end = app_data.date_time + timedelta(minutes=service.duration_minutes)
     existing = db.query(models.Appointment).filter(
         models.Appointment.mechanic_id == app_data.mechanic_id,
+        models.Appointment.status != models.AppointmentStatus.cancelled,
         models.Appointment.date_time < new_end,
         models.Appointment.date_time + timedelta(minutes=60) > app_data.date_time
     ).first()
@@ -192,8 +219,11 @@ def create_appointment(app_data: schemas.AppointmentCreate, current_user: models
     ).scalar()
 
     new_app = models.Appointment(
-        car_id=app_data.car_id, service_id=app_data.service_id, mechanic_id=app_data.mechanic_id,
-        date_time=app_data.date_time, ticket_number=daily_count + 1
+        car_id=app_data.car_id,
+        service_id=app_data.service_id,
+        mechanic_id=app_data.mechanic_id,
+        date_time=app_data.date_time,
+        ticket_number=daily_count + 1
     )
     db.add(new_app)
     db.commit()
@@ -202,86 +232,48 @@ def create_appointment(app_data: schemas.AppointmentCreate, current_user: models
 
 
 @app.patch("/appointments/{appointment_id}/cancel")
-def cancel_appointment(appointment_id: int, current_user: models.User = Depends(get_current_user),
-                       db: Session = Depends(get_db)):
+def cancel_appointment(
+    appointment_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     client = db.query(models.Client).filter(models.Client.user_id == current_user.id).first()
     if not client:
-        raise HTTPException(status_code=403, detail="Только клиенты могут отменять записи")
-
-    appointment = db.query(models.Appointment).filter(models.Appointment.id == appointment_id).first()
-    if not appointment:
+        raise HTTPException(status_code=404, detail="Профиль клиента не найден")
+    app_obj = db.query(models.Appointment).filter(models.Appointment.id == appointment_id).first()
+    if not app_obj:
         raise HTTPException(status_code=404, detail="Запись не найдена")
-
-    car = db.query(models.Car).filter(models.Car.id == appointment.car_id).first()
-    if not car or car.client_id != client.id:
-        raise HTTPException(status_code=403, detail="Вы не можете отменить чужую запись")
-
-    if appointment.status == models.AppointmentStatus.done:
-        raise HTTPException(status_code=400, detail="Нельзя отменить уже выполненный ремонт")
-
-    appointment.status = models.AppointmentStatus.cancelled
+    app_obj.status = models.AppointmentStatus.cancelled
     db.commit()
-    return {"status": "успех", "message": "Запись отменена"}
+    return {"status": app_obj.status.value}
 
 
-# --- 5. ГРАФИК И СТАТИСТИКА (ДЛЯ МАСТЕРА) ---
-@app.get("/mechanics/me/schedule", response_model=List[schemas.AppointmentResponse])
-def get_mechanic_schedule(date: str, mechanic: models.Employee = Depends(get_current_mechanic),
-                          db: Session = Depends(get_db)):
-    try:
-        target_date = datetime.strptime(date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Неверный формат даты. Используйте YYYY-MM-DD")
-
-    return db.query(models.Appointment).filter(
-        models.Appointment.mechanic_id == mechanic.id,
-        func.date(models.Appointment.date_time) == target_date
-    ).order_by(models.Appointment.date_time.asc()).all()
-
-
+# --- 5. ЛИЧНЫЙ КАБИНЕТ МАСТЕРА ---
 @app.get("/mechanics/me/stats")
-def get_mechanic_stats(mechanic: models.Employee = Depends(get_current_mechanic), db: Session = Depends(get_db)):
-    completed = db.query(func.count(models.Appointment.id)).filter(
+def get_mechanic_stats(
+    mechanic: models.Employee = Depends(get_current_mechanic),
+    db: Session = Depends(get_db)
+):
+    completed_count = db.query(func.count(models.Appointment.id)).filter(
         models.Appointment.mechanic_id == mechanic.id,
         models.Appointment.status == models.AppointmentStatus.done
     ).scalar()
-    return {"mechanic": mechanic.name, "completed_cars": completed}
+    return {
+        "mechanic_name": mechanic.name,
+        "completed_cars": completed_count or 0
+    }
 
 
-@app.patch("/appointments/{appointment_id}/status")
-def update_status(appointment_id: int, new_status: models.AppointmentStatus,
-                  mechanic: models.Employee = Depends(get_current_mechanic), db: Session = Depends(get_db)):
-    app = db.query(models.Appointment).filter(models.Appointment.id == appointment_id).first()
-    if not app or app.mechanic_id != mechanic.id:
-        raise HTTPException(status_code=404, detail="Запись не найдена или принадлежит другому мастеру")
+@app.get("/mechanics/me/appointments")
+def get_mechanic_appointments(
+    mechanic: models.Employee = Depends(get_current_mechanic),
+    db: Session = Depends(get_db)
+):
+    all_apps = db.query(models.Appointment).all()
+    print("=== ОТЛАДКА МАСТЕРА ===")
+    print("Текущий залогиненный мастер:", mechanic.id, mechanic.name, "user_id:", mechanic.user_id)
+    print("Все записи в БД:", [(a.id, "mech_id:", a.mechanic_id, "date:", a.date_time) for a in all_apps])
 
-    app.status = new_status
-    db.commit()
-    return {"status": "успех", "new_status": new_status}
-
-
-# --- 7. АДМИНКА ---
-@app.post("/admin/create-mechanic", status_code=status.HTTP_201_CREATED)
-def create_mechanic(mechanic_data: schemas.MechanicCreate, admin: models.User = Depends(get_current_admin),
-                    db: Session = Depends(get_db)):
-    if db.query(models.User).filter(models.User.email == mechanic_data.email).first():
-        raise HTTPException(status_code=400, detail="Email уже занят")
-
-    new_user = models.User(
-        email=mechanic_data.email,
-        password_hash=auth.get_password_hash(mechanic_data.password),
-        role=models.RoleEnum.mechanic
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-
-    new_employee = models.Employee(user_id=new_user.id, name=mechanic_data.name)
-    db.add(new_employee)
-    db.commit()
-    return {"status": "успех", "message": f"Мастер {mechanic_data.name} успешно создан"}
-
-
-@app.get("/")
-def home():
-    return {"status": "ok", "message": "АвтоБосс API v2.0 готов к работе"}
+    appointments = db.query(models.Appointment).filter(
+        models.Appointment.mechanic_id == mechanic.id
+    ).order_by(models.Appointment.date_time.asc()).all()

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from app.database import engine, Base, get_db
@@ -11,7 +11,7 @@ from app import models, schemas, auth
 from app.config import settings
 from app.seed import seed_db
 
-# Создание таблиц и заполнение БД (для локальной разработки)
+# Создание таблиц и заполнение БД
 Base.metadata.create_all(bind=engine)
 seed_db()
 
@@ -102,7 +102,7 @@ def register_client(user_data: schemas.ClientRegister, db: Session = Depends(get
         role=models.RoleEnum.client
     )
     db.add(new_user)
-    db.flush()  # Получаем ID пользователя до коммита
+    db.flush()
 
     new_client = models.Client(user_id=new_user.id, name=user_data.name, phone=user_data.phone)
     db.add(new_client)
@@ -184,12 +184,15 @@ def get_available_mechanics(service_id: int, date_time: datetime, db: Session = 
     if not service:
         raise HTTPException(status_code=404, detail="Услуга не найдена")
 
+    # ПРОВЕРКА РАБОЧЕГО ВРЕМЕНИ (с 8 до 20)
+    if date_time.hour < 8 or date_time.hour >= 20:
+        raise HTTPException(status_code=400, detail="Мастер работает только с 8:00 до 20:00")
+
     new_end = date_time + timedelta(minutes=service.duration_minutes)
     all_mechanics = db.query(models.Employee).all()
     available = []
 
     for mech in all_mechanics:
-        # Проверка пересечения (пока используется 60 минут, как было у вас)
         overlap = db.query(models.Appointment).filter(
             models.Appointment.mechanic_id == mech.id,
             models.Appointment.status != models.AppointmentStatus.cancelled,
@@ -207,7 +210,21 @@ def create_appointment(
         current_user: models.User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    # 1. Проверяем, что машина принадлежит текущему клиенту
+    # 1. ПРОВЕРКА ПРОШЕДШЕГО ВРЕМЕНИ
+    now = datetime.now(timezone.utc)
+    if app_data.date_time.tzinfo is None:
+        app_datetime = app_data.date_time.replace(tzinfo=timezone.utc)
+    else:
+        app_datetime = app_data.date_time
+
+    if app_datetime < now:
+        raise HTTPException(status_code=400, detail="Нельзя записаться на прошедшее время")
+
+    # 2. ПРОВЕРКА РАБОЧЕГО ВРЕМЕНИ (с 8 до 20)
+    if app_data.date_time.hour < 8 or app_data.date_time.hour >= 20:
+        raise HTTPException(status_code=400, detail="Мастер работает только с 8:00 до 20:00")
+
+    # 3. ПРОВЕРКА МАШИНЫ КЛИЕНТА
     client = db.query(models.Client).filter(models.Client.user_id == current_user.id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Профиль клиента не найден")
@@ -216,12 +233,12 @@ def create_appointment(
     if not car:
         raise HTTPException(status_code=403, detail="Эта машина не принадлежит вам")
 
-    # 2. Проверяем услугу
+    # 4. ПРОВЕРКА УСЛУГИ
     service = db.query(models.Service).filter(models.Service.id == app_data.service_id).first()
     if not service:
         raise HTTPException(status_code=404, detail="Услуга не найдена")
 
-    # 3. Проверяем занятость мастера
+    # 5. ПРОВЕРКА ЗАНЯТОСТИ МАСТЕРА
     new_end = app_data.date_time + timedelta(minutes=service.duration_minutes)
     existing = db.query(models.Appointment).filter(
         models.Appointment.mechanic_id == app_data.mechanic_id,
@@ -233,13 +250,13 @@ def create_appointment(
     if existing:
         raise HTTPException(status_code=400, detail="Мастер занят в это время")
 
-    # 4. Генерируем номер талона
+    # 6. ГЕНЕРАЦИЯ ТАЛОНА
     target_date = app_data.date_time.date()
     daily_count = db.query(func.count(models.Appointment.id)).filter(
         func.date(models.Appointment.date_time) == target_date
     ).scalar()
 
-    # 5. Создаем запись
+    # 7. СОЗДАНИЕ ЗАПИСИ
     new_app = models.Appointment(
         car_id=app_data.car_id,
         service_id=app_data.service_id,
@@ -263,7 +280,6 @@ def cancel_appointment(
     if not client:
         raise HTTPException(status_code=404, detail="Профиль клиента не найден")
 
-    # Ищем запись и проверяем, что она принадлежит клиенту (через машину)
     app_obj = db.query(models.Appointment).join(models.Car).filter(
         models.Appointment.id == appointment_id,
         models.Car.client_id == client.id
@@ -277,7 +293,29 @@ def cancel_appointment(
     return {"status": app_obj.status.value}
 
 
-# --- 5. ЛИЧНЫЙ КАБИНЕТ МАСТЕРА ---
+# --- 5. ЛИЧНЫЙ КАБИНЕТ КЛИЕНТА ---
+@app.get("/clients/me/appointments", response_model=List[schemas.AppointmentResponse])
+def get_client_appointments(
+        current_user: models.User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    # 1. Находим профиль клиента
+    client = db.query(models.Client).filter(models.Client.user_id == current_user.id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Профиль клиента не найден")
+
+    # 2. Ищем все записи, где машина принадлежит этому клиенту
+    appointments = db.query(models.Appointment).join(models.Car).options(
+        joinedload(models.Appointment.car),
+        joinedload(models.Appointment.service)
+    ).filter(
+        models.Car.client_id == client.id
+    ).order_by(models.Appointment.date_time.desc()).all()
+
+    return appointments
+
+
+# --- 6. ЛИЧНЫЙ КАБИНЕТ МАСТЕРА ---
 @app.get("/mechanics/me/stats")
 def get_mechanic_stats(
         mechanic: models.Employee = Depends(get_current_mechanic),
@@ -298,7 +336,6 @@ def get_mechanic_appointments(
         mechanic: models.Employee = Depends(get_current_mechanic),
         db: Session = Depends(get_db)
 ):
-    # Используем joinedload, чтобы подгрузить связанные данные (машину, услугу) для Swagger
     appointments = db.query(models.Appointment).options(
         joinedload(models.Appointment.car),
         joinedload(models.Appointment.service)
@@ -312,11 +349,10 @@ def get_mechanic_appointments(
 @app.patch("/appointments/{appointment_id}/status", response_model=schemas.AppointmentResponse)
 def update_appointment_status(
         appointment_id: int,
-        new_status: models.AppointmentStatus,  # Передаем новый статус прямо в query (или можно сделать схему)
+        new_status: models.AppointmentStatus,
         mechanic: models.Employee = Depends(get_current_mechanic),
         db: Session = Depends(get_db)
 ):
-    # Мастер может менять статус только СВОИХ записей
     app_obj = db.query(models.Appointment).filter(
         models.Appointment.id == appointment_id,
         models.Appointment.mechanic_id == mechanic.id

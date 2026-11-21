@@ -121,7 +121,24 @@ def login(login_data: schemas.UserLogin, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-# --- 2. АВТОМОБИЛИ ---
+# --- 2. УПРАВЛЕНИЕ МАРКАМИ (НОВОЕ) ---
+@app.post("/admin/brands", response_model=schemas.BrandResponse, status_code=201)
+def create_brand(name: str, admin: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    if db.query(models.Brand).filter(models.Brand.name == name).first():
+        raise HTTPException(400, "Такая марка уже есть")
+    new_brand = models.Brand(name=name)
+    db.add(new_brand)
+    db.commit()
+    db.refresh(new_brand)
+    return new_brand
+
+
+@app.get("/brands", response_model=List[schemas.BrandResponse])
+def get_brands(db: Session = Depends(get_db)):
+    return db.query(models.Brand).all()
+
+
+# --- 3. АВТОМОБИЛИ ---
 @app.post("/cars", response_model=schemas.CarResponse)
 def add_car(
         car_data: schemas.CarCreate,
@@ -132,6 +149,11 @@ def add_car(
     if not client:
         raise HTTPException(status_code=404, detail="Профиль клиента не найден")
 
+    # Проверка марки (НОВОЕ)
+    brand = db.query(models.Brand).filter(models.Brand.id == car_data.brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Марка не найдена")
+
     existing_car = db.query(models.Car).filter(
         models.Car.client_id == client.id,
         models.Car.license_plate == car_data.license_plate
@@ -139,7 +161,12 @@ def add_car(
     if existing_car:
         raise HTTPException(status_code=400, detail="Машина с таким госномером уже добавлена")
 
-    new_car = models.Car(client_id=client.id, brand_model=car_data.brand_model, license_plate=car_data.license_plate)
+    new_car = models.Car(
+        client_id=client.id,
+        brand_id=car_data.brand_id,
+        model_name=car_data.model_name,
+        license_plate=car_data.license_plate
+    )
     db.add(new_car)
     db.commit()
     db.refresh(new_car)
@@ -154,7 +181,7 @@ def get_my_cars(current_user: models.User = Depends(get_current_user), db: Sessi
     return db.query(models.Car).filter(models.Car.client_id == client.id).all()
 
 
-# --- 3. УСЛУГИ ---
+# --- 4. УСЛУГИ ---
 @app.get("/services", response_model=List[schemas.ServiceResponse])
 def get_services(db: Session = Depends(get_db)):
     return db.query(models.Service).all()
@@ -177,7 +204,7 @@ def create_service(
     return new_service
 
 
-# --- 4. ВЫБОР МАСТЕРА И ЗАПИСЬ ---
+# --- 5. ВЫБОР МАСТЕРА И ЗАПИСЬ ---
 @app.get("/services/{service_id}/available-mechanics", response_model=List[schemas.MechanicResponse])
 def get_available_mechanics(service_id: int, date_time: datetime, db: Session = Depends(get_db)):
     service = db.query(models.Service).filter(models.Service.id == service_id).first()
@@ -293,18 +320,16 @@ def cancel_appointment(
     return {"status": app_obj.status.value}
 
 
-# --- 5. ЛИЧНЫЙ КАБИНЕТ КЛИЕНТА ---
+# --- 6. ЛИЧНЫЙ КАБИНЕТ КЛИЕНТА ---
 @app.get("/clients/me/appointments", response_model=List[schemas.AppointmentResponse])
 def get_client_appointments(
         current_user: models.User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    # 1. Находим профиль клиента
     client = db.query(models.Client).filter(models.Client.user_id == current_user.id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Профиль клиента не найден")
 
-    # 2. Ищем все записи, где машина принадлежит этому клиенту
     appointments = db.query(models.Appointment).join(models.Car).options(
         joinedload(models.Appointment.car),
         joinedload(models.Appointment.service)
@@ -315,7 +340,7 @@ def get_client_appointments(
     return appointments
 
 
-# --- 6. ЛИЧНЫЙ КАБИНЕТ МАСТЕРА ---
+# --- 7. ЛИЧНЫЙ КАБИНЕТ МАСТЕРА ---
 @app.get("/mechanics/me/stats")
 def get_mechanic_stats(
         mechanic: models.Employee = Depends(get_current_mechanic),

@@ -1,9 +1,8 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
 from app.models import RoleEnum, AppointmentStatus
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
 class ClientRegister(BaseModel):
     email: EmailStr
@@ -19,13 +18,20 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+class BrandResponse(BaseModel):
+    id: int
+    name: str
+    model_config = ConfigDict(from_attributes=True)
+
 class CarCreate(BaseModel):
-    brand_model: str
-    license_plate: str
+    brand_id: int
+    model_name: str
+    license_plate: str = Field(..., pattern=r"^[А-ЯA-Z]\d{3}[А-ЯA-Z]{2}\d{2,3}$")
 
 class CarResponse(BaseModel):
     id: int
-    brand_model: str
+    brand: BrandResponse
+    model_name: str
     license_plate: str
     model_config = ConfigDict(from_attributes=True)
 
@@ -56,6 +62,7 @@ class AppointmentResponse(BaseModel):
     ticket_number: Optional[int]
     status: AppointmentStatus
     model_config = ConfigDict(from_attributes=True)
+
 class ServiceCreate(BaseModel):
     title: str
     price: Decimal

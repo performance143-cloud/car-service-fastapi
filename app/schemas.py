@@ -8,7 +8,8 @@ class ClientRegister(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=6)
     name: str = Field(..., min_length=2)
-    phone: str = Field(..., pattern=r"^\+?[0-9]{10,15}$")
+    # Разрешаем пробелы, скобки, дефисы и плюс. Внутри — 10–15 цифр.
+    phone: str = Field(..., pattern=r"^[\+\d\s\(\)\-]{10,20}$")
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -72,3 +73,13 @@ class MechanicCreate(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=6)
     name: str = Field(..., min_length=2)
+
+class CarModelCreate(BaseModel):
+    brand_id: int
+    name: str
+
+class CarModelResponse(BaseModel):
+    id: int
+    name: str
+    brand_id: int
+    model_config = ConfigDict(from_attributes=True)

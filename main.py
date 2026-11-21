@@ -121,7 +121,7 @@ def login(login_data: schemas.UserLogin, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-# --- 2. УПРАВЛЕНИЕ МАРКАМИ (НОВОЕ) ---
+# --- 2. УПРАВЛЕНИЕ МАРКАМИ ---
 @app.post("/admin/brands", response_model=schemas.BrandResponse, status_code=201)
 def create_brand(name: str, admin: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
     if db.query(models.Brand).filter(models.Brand.name == name).first():
@@ -138,6 +138,37 @@ def get_brands(db: Session = Depends(get_db)):
     return db.query(models.Brand).all()
 
 
+# --- 2.1 УПРАВЛЕНИЕ МОДЕЛЯМИ ---
+@app.post("/admin/models", response_model=schemas.CarModelResponse, status_code=201)
+def create_car_model(
+        model_data: schemas.CarModelCreate,
+        admin: models.User = Depends(get_current_admin),
+        db: Session = Depends(get_db)
+):
+    brand = db.query(models.Brand).filter(models.Brand.id == model_data.brand_id).first()
+    if not brand:
+        raise HTTPException(404, "Марка не найдена")
+    existing = db.query(models.CarModel).filter(
+        models.CarModel.brand_id == model_data.brand_id,
+        models.CarModel.name == model_data.name
+    ).first()
+    if existing:
+        raise HTTPException(400, "Такая модель уже есть у этой марки")
+    new_model = models.CarModel(brand_id=model_data.brand_id, name=model_data.name)
+    db.add(new_model)
+    db.commit()
+    db.refresh(new_model)
+    return new_model
+
+
+@app.get("/brands/{brand_id}/models", response_model=List[schemas.CarModelResponse])
+def get_models_by_brand(brand_id: int, db: Session = Depends(get_db)):
+    brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+    if not brand:
+        raise HTTPException(404, "Марка не найдена")
+    return db.query(models.CarModel).filter(models.CarModel.brand_id == brand_id).all()
+
+
 # --- 3. АВТОМОБИЛИ ---
 @app.post("/cars", response_model=schemas.CarResponse)
 def add_car(
@@ -149,7 +180,6 @@ def add_car(
     if not client:
         raise HTTPException(status_code=404, detail="Профиль клиента не найден")
 
-    # Проверка марки (НОВОЕ)
     brand = db.query(models.Brand).filter(models.Brand.id == car_data.brand_id).first()
     if not brand:
         raise HTTPException(status_code=404, detail="Марка не найдена")
@@ -211,7 +241,6 @@ def get_available_mechanics(service_id: int, date_time: datetime, db: Session = 
     if not service:
         raise HTTPException(status_code=404, detail="Услуга не найдена")
 
-    # ПРОВЕРКА РАБОЧЕГО ВРЕМЕНИ (с 8 до 20)
     if date_time.hour < 8 or date_time.hour >= 20:
         raise HTTPException(status_code=400, detail="Мастер работает только с 8:00 до 20:00")
 
@@ -237,7 +266,6 @@ def create_appointment(
         current_user: models.User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    # 1. ПРОВЕРКА ПРОШЕДШЕГО ВРЕМЕНИ
     now = datetime.now(timezone.utc)
     if app_data.date_time.tzinfo is None:
         app_datetime = app_data.date_time.replace(tzinfo=timezone.utc)
@@ -247,11 +275,9 @@ def create_appointment(
     if app_datetime < now:
         raise HTTPException(status_code=400, detail="Нельзя записаться на прошедшее время")
 
-    # 2. ПРОВЕРКА РАБОЧЕГО ВРЕМЕНИ (с 8 до 20)
     if app_data.date_time.hour < 8 or app_data.date_time.hour >= 20:
         raise HTTPException(status_code=400, detail="Мастер работает только с 8:00 до 20:00")
 
-    # 3. ПРОВЕРКА МАШИНЫ КЛИЕНТА
     client = db.query(models.Client).filter(models.Client.user_id == current_user.id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Профиль клиента не найден")
@@ -260,12 +286,10 @@ def create_appointment(
     if not car:
         raise HTTPException(status_code=403, detail="Эта машина не принадлежит вам")
 
-    # 4. ПРОВЕРКА УСЛУГИ
     service = db.query(models.Service).filter(models.Service.id == app_data.service_id).first()
     if not service:
         raise HTTPException(status_code=404, detail="Услуга не найдена")
 
-    # 5. ПРОВЕРКА ЗАНЯТОСТИ МАСТЕРА
     new_end = app_data.date_time + timedelta(minutes=service.duration_minutes)
     existing = db.query(models.Appointment).filter(
         models.Appointment.mechanic_id == app_data.mechanic_id,
@@ -277,13 +301,11 @@ def create_appointment(
     if existing:
         raise HTTPException(status_code=400, detail="Мастер занят в это время")
 
-    # 6. ГЕНЕРАЦИЯ ТАЛОНА
     target_date = app_data.date_time.date()
     daily_count = db.query(func.count(models.Appointment.id)).filter(
         func.date(models.Appointment.date_time) == target_date
     ).scalar()
 
-    # 7. СОЗДАНИЕ ЗАПИСИ
     new_app = models.Appointment(
         car_id=app_data.car_id,
         service_id=app_data.service_id,
@@ -390,3 +412,94 @@ def update_appointment_status(
     db.commit()
     db.refresh(app_obj)
     return app_obj
+
+
+# --- 8. УПРАВЛЕНИЕ МАСТЕРАМИ (АДМИН) ---
+@app.get("/admin/mechanics", response_model=List[schemas.MechanicResponse])
+def get_all_mechanics(admin: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    return db.query(models.Employee).all()
+
+
+@app.post("/admin/mechanics", response_model=schemas.MechanicResponse, status_code=201)
+def create_mechanic(
+        mechanic_data: schemas.MechanicCreate,
+        admin: models.User = Depends(get_current_admin),
+        db: Session = Depends(get_db)
+):
+    if db.query(models.User).filter(models.User.email == mechanic_data.email).first():
+        raise HTTPException(400, "Email уже зарегистрирован")
+
+    new_user = models.User(
+        email=mechanic_data.email,
+        password_hash=auth.get_password_hash(mechanic_data.password),
+        role=models.RoleEnum.mechanic
+    )
+    db.add(new_user)
+    db.flush()
+
+    new_employee = models.Employee(user_id=new_user.id, name=mechanic_data.name)
+    db.add(new_employee)
+    db.commit()
+    db.refresh(new_employee)
+    return new_employee
+
+
+@app.delete("/admin/mechanics/{mechanic_id}", status_code=204)
+def delete_mechanic(
+        mechanic_id: int,
+        admin: models.User = Depends(get_current_admin),
+        db: Session = Depends(get_db)
+):
+    employee = db.query(models.Employee).filter(models.Employee.id == mechanic_id).first()
+    if not employee:
+        raise HTTPException(404, "Мастер не найден")
+
+    db.delete(employee.user)
+    db.commit()
+    return None
+
+
+@app.get("/admin/finance")
+def get_finance_stats(admin: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    mechanics = db.query(models.Employee).all()
+
+    mechanic_earnings = []
+    total_revenue = 0.0
+
+    for mech in mechanics:
+        # Загружаем записи вместе с услугой (joinedload), чтобы app.service был не None
+        completed_apps = db.query(models.Appointment).options(
+            joinedload(models.Appointment.service)
+        ).filter(
+            models.Appointment.mechanic_id == mech.id,
+            models.Appointment.status == models.AppointmentStatus.done
+        ).all()
+
+        # Считаем стоимость, проверяя, что service существует
+        total_service_cost = sum(
+            float(app.service.price) for app in completed_apps if app.service
+        )
+
+        earnings = total_service_cost * 0.65
+        firm_income = total_service_cost * 0.35
+
+        mechanic_earnings.append({
+            "mechanic_id": mech.id,
+            "mechanic_name": mech.name,
+            "completed_count": len(completed_apps),
+            "total_service_cost": total_service_cost,
+            "earnings": earnings,
+            "firm_income": firm_income
+        })
+
+        total_revenue += total_service_cost
+
+    total_firm_income = total_revenue * 0.35
+    total_mechanics_earnings = total_revenue * 0.65
+
+    return {
+        "mechanics": mechanic_earnings,
+        "total_revenue": total_revenue,
+        "total_firm_income": total_firm_income,
+        "total_mechanics_earnings": total_mechanics_earnings
+    }

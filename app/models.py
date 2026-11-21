@@ -44,10 +44,26 @@ class Employee(Base):
     user = relationship("User", back_populates="employee")
     appointments = relationship("Appointment", back_populates="mechanic")
 
+
 class Brand(Base):
     __tablename__ = "brands"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(50), unique=True, nullable=False, index=True)
+
+    # Новая связь:
+    models = relationship("CarModel", back_populates="brand", cascade="all, delete-orphan")
+
+
+class CarModel(Base):
+    __tablename__ = "car_models"
+    id = Column(Integer, primary_key=True, index=True)
+    brand_id = Column(Integer, ForeignKey("brands.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False)
+
+    brand = relationship("Brand", back_populates="models")
+    # Связь с машинами (если хотите ссылаться на модель по ID, а не по тексту)
+    # cars = relationship("Car", back_populates="model")
+
 
 class Car(Base):
     __tablename__ = "cars"
